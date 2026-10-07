@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meta Leads - All Markets</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#fff; color:#1f2430; }
+  #report { max-width:1100px; margin:0 auto; padding:14px; }
+  .hdr { text-align:center; margin-bottom:12px; }
+  .hdr h1 { font-size:18px; margin:0 0 2px; }
+  .hdr p { font-size:11px; color:#666; font-style:italic; margin:0; }
+  .controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; padding:10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; }
+  .controls label { font-size:13px; font-weight:600; color:#374151; }
+  .controls select, .controls input[type=date] { padding:5px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; background:#fff; }
+  .rng { display:none; align-items:center; gap:6px; font-size:13px; color:#6b7280; }
+  .btn { padding:6px 16px; background:#1d4ed8; color:#fff; border:0; border-radius:4px; font-size:13px; font-weight:600; cursor:pointer; }
+  .btn:hover { background:#1e40af; }
+  .cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .card { flex:1 1 120px; border:1px solid #e5e7eb; border-radius:6px; padding:10px 14px; }
+  .card .n { font-size:20px; font-weight:700; } .card .l { font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; }
+  h2 { font-size:14px; margin:16px 0 6px; }
+  .tw { overflow-x:auto; border:1px solid #d1d5db; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#1d4ed8; color:#fff; font-size:13px; padding:7px 10px; border:1px solid #1e40af; white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  td { padding:6px 10px; border:1px solid #e5e7eb; font-size:13px; text-align:center; white-space:nowrap; }
+  td.c { max-width:380px; overflow:hidden; text-overflow:ellipsis; }
+  tbody tr:nth-child(even) td { background:#f8fafc; }
+  tfoot td { font-weight:700; background:#f3f4f6; }
+  .note { font-size:11px; color:#6b7280; font-style:italic; margin-top:8px; line-height:1.5; }
+  .msg { padding:20px; text-align:center; color:#9ca3af; } .msg.err { color:#ef4444; }
+</style>
+</head>
+<body>
+<div id="report">
+  <div class="hdr"><h1>Meta Leads – All Markets</h1><p id="dl">Loading…</p></div>
+
+  <div class="controls">
+    <label for="market">Market</label>
+    <select id="market"><option>All markets</option><option>Dallas</option><option>Atlanta</option><option>Las Vegas</option><option>Orlando</option></select>
+    <label for="preset">Date range</label>
+    <select id="preset">
+      <option value="today">Today</option><option value="yesterday">Yesterday</option>
+      <option value="last7" selected>Last 7 days</option><option value="last30">Last 30 days</option>
+      <option value="mtd">Month to date</option><option value="all">Since 8/10 (BN launch)</option><option value="custom">Custom range</option>
+    </select>
+    <span class="rng" id="rng">From <input type="date" id="sd"> To <input type="date" id="ed"></span>
+    <button class="btn" id="apply">Apply</button>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="n" id="kTotal">–</div><div class="l">Meta leads</div></div>
+    <div class="card"><div class="n" id="kNative">–</div><div class="l">Native lead forms</div></div>
+    <div class="card"><div class="n" id="kWeb">–</div><div class="l">Website forms</div></div>
+    <div class="card"><div class="n" id="kCall">–</div><div class="l">Calls</div></div>
+    <div class="card"><div class="n" id="kCpl">–</div><div class="l">Cost per lead</div></div>
+    <div class="card"><div class="n" id="kRev">–</div><div class="l">Won revenue</div></div>
+  </div>
+
+  <h2>By market</h2>
+  <div class="tw"><table><thead><tr><th>Market</th><th>Native</th><th>Website</th><th>Calls</th><th>Total</th><th>Won</th><th>Revenue</th></tr></thead>
+    <tbody id="tMarket"><tr><td colspan="7" class="msg">Loading…</td></tr></tbody><tfoot id="fMarket"></tfoot></table></div>
+
+  <h2>Daily</h2>
+  <div class="tw"><table><thead><tr><th>Date</th><th>Native</th><th>Website</th><th>Calls</th><th>Total</th></tr></thead>
+    <tbody id="tDay"></tbody></table></div>
+
+  <h2>By campaign</h2>
+  <div class="tw"><table><thead><tr><th>Campaign</th><th>Native</th><th>Website</th><th>Calls</th><th>Total</th><th>Won</th></tr></thead>
+    <tbody id="tCamp"></tbody></table></div>
+
+  <p class="note">Native = Meta lead-ad forms. Website = clicked a Meta ad and filled a landing-page form (UTMs/fbclid, or tagged <b>meta-website</b> in GHL).
+    Calls = Meta call-tracking numbers (shows 0 until those are set up). Cost per lead uses total Meta spend for the whole ad account, so it's shown for All markets only.
+    Revenue counts won deals for leads in the range; recent leads may not have closed yet. Data refreshes every 12 hours.</p>
+</div>
+
+<script>
+/* ===== CONFIG ===== API_BASE = the same Cloudflare Worker URL used by the Revenue by Ad Source page (no trailing slash). */
+const API_BASE = "https://gar-meta-leads-all-markets.apfelipe94.workers.dev/all/meta";
+const LEADS_URL = API_BASE + "/all/meta";
+const SPEND_URL = API_BASE + "/dallas/spend";   // Meta spend for the whole ad account (all markets) lives in the Dallas Spend tab
+const START = "2026-08-10";
+const MARKETS = ["Dallas", "Atlanta", "Las Vegas", "Orlando"];
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const fmt = (d) => d.toISOString().slice(0, 10);
+const money = (n) => "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+const getJson = (u) => fetch(u).then((r) => r.json().then((j) => { if (!r.ok || j.error) throw new Error(j.error || "HTTP " + r.status); return j; }));
+let DATA = [], SPEND = null;
+
+function range() {
+  const p = $("preset").value, now = new Date(), s = new Date(), e = new Date();
+  if (p === "custom") return { s: $("sd").value, e: $("ed").value };
+  if (p === "yesterday") { s.setDate(now.getDate() - 1); e.setDate(now.getDate() - 1); }
+  if (p === "last7") s.setDate(now.getDate() - 6);
+  if (p === "last30") s.setDate(now.getDate() - 29);
+  if (p === "mtd") s.setDate(1);
+  if (p === "all") return { s: START, e: fmt(now) };
+  return { s: fmt(s), e: fmt(e) };
+}
+$("preset").onchange = () => {
+  const c = $("preset").value === "custom"; $("rng").style.display = c ? "inline-flex" : "none";
+  if (c) { $("sd").value = fmt(new Date(Date.now() - 6 * 864e5)); $("ed").value = fmt(new Date()); }
+};
+
+const blank = () => ({ Native: 0, Website: 0, Call: 0, won: 0, rev: 0 });
+const tot = (o) => o.Native + o.Website + o.Call;
+function add(o, r) { if (o[r.type] != null) o[r.type]++; o.won += r.won; o.rev += r.wonValue; }
+
+function render() {
+  const { s, e } = range(), mk = $("market").value;
+  const rows = DATA.filter((r) => r.date >= s && r.date <= e && (mk === "All markets" || r.market === mk));
+  const all = blank(), byM = {}, byD = {}, byC = {};
+  MARKETS.forEach((m) => (byM[m] = blank()));
+  for (const r of rows) {
+    add(all, r); add(byM[r.market] ||= blank(), r); add(byD[r.date] ||= blank(), r);
+    add(byC[r.campaign || "(no campaign)"] ||= blank(), r);
+  }
+  $("kTotal").textContent = tot(all); $("kNative").textContent = all.Native; $("kWeb").textContent = all.Website;
+  $("kCall").textContent = all.Call; $("kRev").textContent = money(all.rev);
+  let cpl = "–";
+  if (SPEND && mk === "All markets" && tot(all)) {
+    const sp = SPEND.filter((x) => x.date >= s && x.date <= e && /meta|facebook/i.test(x.source)).reduce((a, x) => a + x.spend, 0);
+    if (sp > 0) cpl = money(sp / tot(all));
+  }
+  $("kCpl").textContent = cpl;
+
+  const ms = mk === "All markets" ? MARKETS : [mk];
+  $("tMarket").innerHTML = ms.map((m) => { const o = byM[m] || blank(); return `<tr><td>${m}</td><td>${o.Native}</td><td>${o.Website}</td><td>${o.Call}</td><td><b>${tot(o)}</b></td><td>${o.won}</td><td>${money(o.rev)}</td></tr>`; }).join("");
+  $("fMarket").innerHTML = `<tr><td>Total</td><td>${all.Native}</td><td>${all.Website}</td><td>${all.Call}</td><td>${tot(all)}</td><td>${all.won}</td><td>${money(all.rev)}</td></tr>`;
+
+  const days = []; for (let d = new Date(e + "T00:00:00Z"); fmt(d) >= s; d.setUTCDate(d.getUTCDate() - 1)) days.push(fmt(d));
+  $("tDay").innerHTML = days.length ? days.map((d) => { const o = byD[d] || blank(); return `<tr><td>${d}</td><td>${o.Native}</td><td>${o.Website}</td><td>${o.Call}</td><td><b>${tot(o)}</b></td></tr>`; }).join("") : '<tr><td colspan="5" class="msg">No days in range.</td></tr>';
+
+  const camps = Object.entries(byC).sort((a, b) => tot(b[1]) - tot(a[1]));
+  $("tCamp").innerHTML = camps.length ? camps.map(([c, o]) => `<tr><td class="c" title="${esc(c)}">${esc(c)}</td><td>${o.Native}</td><td>${o.Website}</td><td>${o.Call}</td><td><b>${tot(o)}</b></td><td>${o.won}</td></tr>`).join("") : '<tr><td colspan="6" class="msg">No Meta leads in this range.</td></tr>';
+  $("dl").textContent = `${mk} · ${s} to ${e}`;
+}
+
+async function load() {
+  if (API_BASE.startsWith("PASTE")) { $("tMarket").innerHTML = '<tr><td colspan="7" class="msg err">Add the Worker URL (API_BASE) to this page.</td></tr>'; return; }
+  try {
+    const [l, sp] = await Promise.all([getJson(LEADS_URL), getJson(SPEND_URL).catch(() => null)]);
+    DATA = l.data || []; SPEND = sp ? sp.data || [] : null;
+    render();
+  } catch (err) { $("tMarket").innerHTML = `<tr><td colspan="7" class="msg err">Couldn't load data: ${esc(err.message)}</td></tr>`; }
+}
+$("apply").onclick = render;
+$("market").onchange = render;
+load();
+</script>
+</body>
+</html>
