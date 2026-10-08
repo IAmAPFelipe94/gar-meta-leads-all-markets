@@ -55,30 +55,38 @@
     <div class="card"><div class="n" id="kNative">–</div><div class="l">Native lead forms</div></div>
     <div class="card"><div class="n" id="kWeb">–</div><div class="l">Website forms</div></div>
     <div class="card"><div class="n" id="kCall">–</div><div class="l">Calls</div></div>
+    <div class="card"><div class="n" id="kCons">–</div><div class="l">Consults</div></div>
+    <div class="card"><div class="n" id="kSold">–</div><div class="l">Sold / Installed</div></div>
+    <div class="card"><div class="n" id="kCont">–</div><div class="l">Contacted by sales</div></div>
     <div class="card"><div class="n" id="kCpl">–</div><div class="l">Cost per lead</div></div>
     <div class="card"><div class="n" id="kRev">–</div><div class="l">Won revenue</div></div>
   </div>
 
   <h2>By market</h2>
-  <div class="tw"><table><thead><tr><th>Market</th><th>Native</th><th>Website</th><th>Calls</th><th>Total</th><th>Won</th><th>Revenue</th></tr></thead>
-    <tbody id="tMarket"><tr><td colspan="7" class="msg">Loading…</td></tr></tbody><tfoot id="fMarket"></tfoot></table></div>
+  <div class="tw"><table><thead><tr><th>Market</th><th>Native</th><th>Website</th><th>Calls</th><th>Total</th><th>Consults</th><th>Quotes</th><th>Sold</th><th>Installed</th><th>Revenue</th></tr></thead>
+    <tbody id="tMarket"><tr><td colspan="10" class="msg">Loading…</td></tr></tbody><tfoot id="fMarket"></tfoot></table></div>
+
+  <h2>Sales follow-up</h2>
+  <div class="tw"><table><thead><tr><th>Market</th><th>Leads</th><th>Contacted</th><th>Contacted %</th><th>Calls made</th><th>Texts sent</th><th>Emails sent</th><th>Avg touches / lead</th></tr></thead>
+    <tbody id="tSales"></tbody><tfoot id="fSales"></tfoot></table></div>
 
   <h2>Daily</h2>
   <div class="tw"><table><thead><tr><th>Date</th><th>Native</th><th>Website</th><th>Calls</th><th>Total</th></tr></thead>
     <tbody id="tDay"></tbody></table></div>
 
   <h2>By campaign</h2>
-  <div class="tw"><table><thead><tr><th>Campaign</th><th>Native</th><th>Website</th><th>Calls</th><th>Total</th><th>Won</th></tr></thead>
+  <div class="tw"><table><thead><tr><th>Campaign</th><th>Native</th><th>Website</th><th>Calls</th><th>Total</th><th>Consults</th><th>Sold</th></tr></thead>
     <tbody id="tCamp"></tbody></table></div>
 
   <p class="note">Native = Meta lead-ad forms. Website = clicked a Meta ad and filled a landing-page form (UTMs/fbclid, or tagged <b>meta-website</b> in GHL).
     Calls = Meta call-tracking numbers (shows 0 until those are set up). Cost per lead uses total Meta spend for the whole ad account, so it's shown for All markets only.
-    Revenue counts won deals for leads in the range; recent leads may not have closed yet. Data refreshes every 12 hours.</p>
+    Consults / Quotes / Sold / Installed = how far each lead has got, based on its current pipeline stage (a Sold lead also counts as a Consult and Quote).
+    Sales follow-up counts calls, texts and emails sent by a team member (automated workflow messages excluded). Revenue counts won deals for leads in the range; recent leads may not have closed yet. Data refreshes every 12 hours.</p>
 </div>
 
 <script>
 /* ===== CONFIG ===== API_BASE = the same Cloudflare Worker URL used by the Revenue by Ad Source page (no trailing slash). */
-const API_BASE = "https://gar-meta-leads-all-markets.apfelipe94.workers.dev/all/meta";
+const API_BASE = "https://gar-meta-leads-all-markets.apfelipe94.workers.dev/";
 const LEADS_URL = API_BASE + "/all/meta";
 const SPEND_URL = API_BASE + "/dallas/spend";   // Meta spend for the whole ad account (all markets) lives in the Dallas Spend tab
 const START = "2026-08-10";
@@ -106,9 +114,15 @@ $("preset").onchange = () => {
   if (c) { $("sd").value = fmt(new Date(Date.now() - 6 * 864e5)); $("ed").value = fmt(new Date()); }
 };
 
-const blank = () => ({ Native: 0, Website: 0, Call: 0, won: 0, rev: 0 });
+const blank = () => ({ Native: 0, Website: 0, Call: 0, won: 0, rev: 0, cons: 0, quote: 0, sold: 0, inst: 0, chk: 0, cont: 0, calls: 0, texts: 0, emails: 0 });
+const RANK = { Lead: 0, Consult: 1, Quote: 2, Sold: 3, Installed: 4 };
 const tot = (o) => o.Native + o.Website + o.Call;
-function add(o, r) { if (o[r.type] != null) o[r.type]++; o.won += r.won; o.rev += r.wonValue; }
+function add(o, r) {
+  if (o[r.type] != null) o[r.type]++; o.won += r.won; o.rev += r.wonValue;
+  const k = RANK[r.funnel] || 0; if (k >= 1) o.cons++; if (k >= 2) o.quote++; if (k >= 3) o.sold++; if (k >= 4) o.inst++;
+  if (r.contacted !== null && r.contacted !== undefined) { o.chk++; if (r.contacted) o.cont++; o.calls += r.calls || 0; o.texts += r.texts || 0; o.emails += r.emails || 0; }
+}
+const pctOf = (a, b) => (b ? Math.round((a / b) * 100) + "%" : "–");
 
 function render() {
   const { s, e } = range(), mk = $("market").value;
@@ -121,6 +135,7 @@ function render() {
   }
   $("kTotal").textContent = tot(all); $("kNative").textContent = all.Native; $("kWeb").textContent = all.Website;
   $("kCall").textContent = all.Call; $("kRev").textContent = money(all.rev);
+  $("kCons").textContent = all.cons; $("kSold").textContent = all.sold + " / " + all.inst; $("kCont").textContent = pctOf(all.cont, all.chk);
   let cpl = "–";
   if (SPEND && mk === "All markets" && tot(all)) {
     const sp = SPEND.filter((x) => x.date >= s && x.date <= e && /meta|facebook/i.test(x.source)).reduce((a, x) => a + x.spend, 0);
@@ -129,14 +144,17 @@ function render() {
   $("kCpl").textContent = cpl;
 
   const ms = mk === "All markets" ? MARKETS : [mk];
-  $("tMarket").innerHTML = ms.map((m) => { const o = byM[m] || blank(); return `<tr><td>${m}</td><td>${o.Native}</td><td>${o.Website}</td><td>${o.Call}</td><td><b>${tot(o)}</b></td><td>${o.won}</td><td>${money(o.rev)}</td></tr>`; }).join("");
-  $("fMarket").innerHTML = `<tr><td>Total</td><td>${all.Native}</td><td>${all.Website}</td><td>${all.Call}</td><td>${tot(all)}</td><td>${all.won}</td><td>${money(all.rev)}</td></tr>`;
+  $("tMarket").innerHTML = ms.map((m) => { const o = byM[m] || blank(); return `<tr><td>${m}</td><td>${o.Native}</td><td>${o.Website}</td><td>${o.Call}</td><td><b>${tot(o)}</b></td><td>${o.cons}</td><td>${o.quote}</td><td>${o.sold}</td><td>${o.inst}</td><td>${money(o.rev)}</td></tr>`; }).join("");
+  $("fMarket").innerHTML = `<tr><td>Total</td><td>${all.Native}</td><td>${all.Website}</td><td>${all.Call}</td><td>${tot(all)}</td><td>${all.cons}</td><td>${all.quote}</td><td>${all.sold}</td><td>${all.inst}</td><td>${money(all.rev)}</td></tr>`;
+  const srow = (n, o) => `<tr><td>${n}</td><td>${tot(o)}</td><td>${o.cont}</td><td>${pctOf(o.cont, o.chk)}</td><td>${o.calls}</td><td>${o.texts}</td><td>${o.emails}</td><td>${o.chk ? ((o.calls + o.texts + o.emails) / o.chk).toFixed(1) : "–"}</td></tr>`;
+  $("tSales").innerHTML = ms.map((m) => srow(m, byM[m] || blank())).join("");
+  $("fSales").innerHTML = srow("Total", all);
 
   const days = []; for (let d = new Date(e + "T00:00:00Z"); fmt(d) >= s; d.setUTCDate(d.getUTCDate() - 1)) days.push(fmt(d));
   $("tDay").innerHTML = days.length ? days.map((d) => { const o = byD[d] || blank(); return `<tr><td>${d}</td><td>${o.Native}</td><td>${o.Website}</td><td>${o.Call}</td><td><b>${tot(o)}</b></td></tr>`; }).join("") : '<tr><td colspan="5" class="msg">No days in range.</td></tr>';
 
   const camps = Object.entries(byC).sort((a, b) => tot(b[1]) - tot(a[1]));
-  $("tCamp").innerHTML = camps.length ? camps.map(([c, o]) => `<tr><td class="c" title="${esc(c)}">${esc(c)}</td><td>${o.Native}</td><td>${o.Website}</td><td>${o.Call}</td><td><b>${tot(o)}</b></td><td>${o.won}</td></tr>`).join("") : '<tr><td colspan="6" class="msg">No Meta leads in this range.</td></tr>';
+  $("tCamp").innerHTML = camps.length ? camps.map(([c, o]) => `<tr><td class="c" title="${esc(c)}">${esc(c)}</td><td>${o.Native}</td><td>${o.Website}</td><td>${o.Call}</td><td><b>${tot(o)}</b></td><td>${o.cons}</td><td>${o.sold}</td></tr>`).join("") : '<tr><td colspan="7" class="msg">No Meta leads in this range.</td></tr>';
   $("dl").textContent = `${mk} · ${s} to ${e}`;
 }
 
